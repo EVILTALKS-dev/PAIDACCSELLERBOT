@@ -3,22 +3,27 @@ from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton
 )
 
+# ── Developer Info (Hardcoded — DO NOT REMOVE) ─────────────────────────────────
+_DEV      = "@EVILTALKS"
+_DEV_LINK = "https://t.me/EVILTALKS"
+
 # ── User Keyboards ─────────────────────────────────────────────────────────────
 
 def user_main_kb():
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="🛒 Browse Accounts"), KeyboardButton(text="📦 My Orders")],
         [KeyboardButton(text="📢 Channel"),         KeyboardButton(text="💬 Support")],
-        [KeyboardButton(text="ℹ️ How It Works")],
+        [KeyboardButton(text="ℹ️ How It Works"),    KeyboardButton(text="👨‍💻 Developer")],
     ], resize_keyboard=True)
 
 
+def developer_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"👨‍💻 Contact Developer — {_DEV}", url=_DEV_LINK)],
+    ])
+
+
 def country_list_kb(stock: list):
-    """
-    stock = [{"country": "India", "flag": "🇮🇳", "price": 199.0, "count": 5}]
-    Dynamically built from DB — no hardcoded country list.
-    Shows stock count per country.
-    """
     buttons = []
     for s in stock:
         flag = s.get("flag") or "🌍"
