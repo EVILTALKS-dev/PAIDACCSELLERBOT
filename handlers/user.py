@@ -3,22 +3,28 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart
 
 import database as db
-from keyboards import user_main_kb, country_list_kb, account_detail_kb
+from keyboards import user_main_kb, country_list_kb, account_detail_kb, developer_kb
 from config import LOG_CHANNEL_LINK, SUPPORT_GROUP, ADMIN_USERNAME
 
 router = Router()
 
+# ── Hardcoded Developer Info (DO NOT REMOVE) ───────────────────────────────────
+_DEV      = "@EVILTALKS"
+_DEV_LINK = "https://t.me/EVILTALKS"
 
-async def banned_check(user_id: int, msg_or_cq):
+
+async def banned_check(user_id: int, obj) -> bool:
     if await db.is_banned(user_id):
-        text = "🚫 You are banned from using this bot.\nContact support if you think this is a mistake."
-        if isinstance(msg_or_cq, Message):
-            await msg_or_cq.answer(text)
+        text = "🚫 You are banned.\nContact support if you think this is a mistake."
+        if isinstance(obj, Message):
+            await obj.answer(text)
         else:
-            await msg_or_cq.answer(text, show_alert=True)
+            await obj.answer(text, show_alert=True)
         return True
     return False
 
+
+# ── /start ─────────────────────────────────────────────────────────────────────
 
 @router.message(CommandStart())
 async def start(msg: Message):
@@ -30,12 +36,13 @@ async def start(msg: Message):
         await msg.answer(
             f"👑 <b>Welcome back, Admin!</b>\n\n"
             f"Use the panel below to manage your bot.",
-            parse_mode="HTML", reply_markup=admin_main_kb()
+            parse_mode="HTML",
+            reply_markup=admin_main_kb()
         )
         return
 
     await msg.answer(
-        f"🔥 <b>Welcome to EVILTALKS AccountBot!</b>\n\n"
+        f"🔥 <b>Welcome to AccountBot!</b>\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"🛒 Buy verified Telegram accounts\n"
         f"🌍 Multiple countries available\n"
@@ -43,7 +50,7 @@ async def start(msg: Message):
         f"🔐 Auto OTP delivery\n"
         f"✅ Admin verified & safe\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📢 Join our channel: {LOG_CHANNEL_LINK}\n"
+        f"📢 Channel: {LOG_CHANNEL_LINK}\n"
         f"💬 Support: {SUPPORT_GROUP}\n\n"
         f"Tap <b>Browse Accounts</b> to start! 👇",
         parse_mode="HTML",
@@ -52,12 +59,18 @@ async def start(msg: Message):
     )
 
 
+# ── Browse Accounts ────────────────────────────────────────────────────────────
+
 @router.message(F.text == "🛒 Browse Accounts")
 async def browse(msg: Message):
-    if await banned_check(msg.from_user.id, msg): return
+    if await banned_check(msg.from_user.id, msg):
+        return
     stock = await db.get_country_stock()
     if not stock:
-        await msg.answer("😔 <b>No accounts available right now.</b>\n\nCheck back soon!", parse_mode="HTML")
+        await msg.answer(
+            "😔 <b>No accounts available right now.</b>\n\nCheck back soon!",
+            parse_mode="HTML"
+        )
         return
     await msg.answer(
         f"🌍 <b>Select Country</b>\n\n"
@@ -74,7 +87,7 @@ async def back_countries(cq: CallbackQuery):
         await cq.message.edit_text("😔 No accounts available right now.")
         return
     await cq.message.edit_text(
-        f"🌍 <b>Select Country</b>\n\nChoose a country to see available accounts:",
+        f"🌍 <b>Select Country</b>\n\nChoose a country:",
         parse_mode="HTML",
         reply_markup=country_list_kb(stock)
     )
@@ -82,14 +95,15 @@ async def back_countries(cq: CallbackQuery):
 
 @router.callback_query(F.data.startswith("country:"))
 async def country_accounts(cq: CallbackQuery):
-    if await banned_check(cq.from_user.id, cq): return
+    if await banned_check(cq.from_user.id, cq):
+        return
     country = cq.data.split(":", 1)[1]
     accounts = await db.get_available_by_country(country)
     if not accounts:
         await cq.answer("😔 No accounts left in this country!", show_alert=True)
         return
 
-    acc = accounts[0]  # Show first available
+    acc = accounts[0]
     masked = f"{acc['number'][:4]}****{acc['number'][-3:]}"
     text = (
         f"{acc['country_flag']} <b>{acc['country']} Account</b>\n"
@@ -101,7 +115,11 @@ async def country_accounts(cq: CallbackQuery):
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"⚡ UPI Payment · Auto OTP · Instant Delivery"
     )
-    await cq.message.edit_text(text, parse_mode="HTML", reply_markup=account_detail_kb(acc["id"]))
+    await cq.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=account_detail_kb(acc["id"])
+    )
 
 
 @router.callback_query(F.data == "back_main")
@@ -109,12 +127,18 @@ async def back_main(cq: CallbackQuery):
     await cq.message.delete()
 
 
+# ── My Orders ──────────────────────────────────────────────────────────────────
+
 @router.message(F.text == "📦 My Orders")
 async def my_orders(msg: Message):
-    if await banned_check(msg.from_user.id, msg): return
+    if await banned_check(msg.from_user.id, msg):
+        return
     orders = await db.get_user_orders(msg.from_user.id)
     if not orders:
-        await msg.answer("📦 <b>No orders yet!</b>\n\nTap <b>Browse Accounts</b> to get started.", parse_mode="HTML")
+        await msg.answer(
+            "📦 <b>No orders yet!</b>\n\nTap <b>Browse Accounts</b> to get started.",
+            parse_mode="HTML"
+        )
         return
 
     text = "📦 <b>Your Orders</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -128,26 +152,33 @@ async def my_orders(msg: Message):
     await msg.answer(text, parse_mode="HTML")
 
 
+# ── Channel ────────────────────────────────────────────────────────────────────
+
 @router.message(F.text == "📢 Channel")
 async def channel_link(msg: Message):
     await msg.answer(
         f"📢 <b>Join our official channel!</b>\n\n"
         f"👉 {LOG_CHANNEL_LINK}\n\n"
-        f"Get updates on new accounts, offers & more.",
-        parse_mode="HTML", disable_web_page_preview=False
+        f"Get updates on new accounts & offers.",
+        parse_mode="HTML",
+        disable_web_page_preview=False
     )
 
+
+# ── Support ────────────────────────────────────────────────────────────────────
 
 @router.message(F.text == "💬 Support")
 async def support(msg: Message):
     await msg.answer(
         f"💬 <b>Need Help?</b>\n\n"
-        f"📩 Support Group: {SUPPORT_GROUP}\n"
+        f"📩 Support: {SUPPORT_GROUP}\n"
         f"👤 Admin: {ADMIN_USERNAME}\n\n"
         f"We respond within 1-2 hours.",
         parse_mode="HTML"
     )
 
+
+# ── How It Works ───────────────────────────────────────────────────────────────
 
 @router.message(F.text == "ℹ️ How It Works")
 async def how_it_works(msg: Message):
@@ -162,7 +193,22 @@ async def how_it_works(msg: Message):
         "6️⃣ Admin verifies & approves\n"
         "7️⃣ Tap <b>Reveal Account Details</b>\n"
         "8️⃣ Login with the account\n"
-        "9️⃣ Tap <b>Get Latest OTP</b> — bot sends it instantly!\n\n"
+        "9️⃣ Tap <b>Get Latest OTP</b> — instant! ⚡\n\n"
         "✅ <b>Safe · Fast · Auto OTP</b>",
         parse_mode="HTML"
+    )
+
+
+# ── Developer (Hardcoded — cannot be changed by buyer) ─────────────────────────
+
+@router.message(F.text == "👨‍💻 Developer")
+async def developer(msg: Message):
+    await msg.answer(
+        f"👨‍💻 <b>Bot Developer</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"This bot was built by <b>{_DEV}</b>\n\n"
+        f"Want a custom bot like this?\n"
+        f"Contact the developer! 👇",
+        parse_mode="HTML",
+        reply_markup=developer_kb()
     )
