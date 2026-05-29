@@ -3,7 +3,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton
 )
 
-# ── Developer Info (Hardcoded — DO NOT REMOVE) ─────────────────────────────────
+# ── Hardcoded Developer Info ───────────────────────────────────────────────────
 _DEV      = "@EVILTALKS"
 _DEV_LINK = "https://t.me/EVILTALKS"
 
@@ -69,15 +69,23 @@ def otp_kb(session_id: int):
     ])
 
 
+def force_join_kb(not_joined: list) -> InlineKeyboardMarkup:
+    buttons = []
+    for i, ch in enumerate(not_joined, 1):
+        buttons.append([InlineKeyboardButton(text=f"📢 Join Channel {i}", url=ch["link"])])
+    buttons.append([InlineKeyboardButton(text="✅ I've Joined — Check Again", callback_data="check_joined")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 # ── Admin Keyboards ────────────────────────────────────────────────────────────
 
 def admin_main_kb():
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="➕ Add Account"),    KeyboardButton(text="📋 View Accounts")],
         [KeyboardButton(text="⏳ Pending Orders"), KeyboardButton(text="📊 Statistics")],
-        [KeyboardButton(text="👥 All Users"),      KeyboardButton(text="📜 Order History")],
+        [KeyboardButton(text="👥 User Management"),KeyboardButton(text="📜 Order History")],
         [KeyboardButton(text="🔐 OTP Sessions"),   KeyboardButton(text="📢 Broadcast")],
-        [KeyboardButton(text="🏠 User Mode")],
+        [KeyboardButton(text="🔧 Maintenance"),    KeyboardButton(text="🏠 User Mode")],
     ], resize_keyboard=True)
 
 
@@ -107,18 +115,31 @@ def admin_otp_kb(session_id: int):
     ])
 
 
+def admin_user_kb(user_id: int, is_banned: bool):
+    ban_btn = (
+        InlineKeyboardButton(text="✅ Unban User", callback_data=f"unban:{user_id}")
+        if is_banned else
+        InlineKeyboardButton(text="🚫 Ban User",   callback_data=f"ban:{user_id}")
+    )
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [ban_btn],
+        [InlineKeyboardButton(text="📜 View Orders", callback_data=f"user_orders:{user_id}")],
+        [InlineKeyboardButton(text="📨 Message User", callback_data=f"msg_user:{user_id}")],
+    ])
+
+
+def maintenance_kb(is_on: bool):
+    toggle_text = "✅ Turn OFF Maintenance" if is_on else "🔧 Turn ON Maintenance"
+    toggle_cb   = "maintenance_off" if is_on else "maintenance_on"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=toggle_text,           callback_data=toggle_cb)],
+        [InlineKeyboardButton(text="✏️ Edit Message",     callback_data="maintenance_edit_msg")],
+    ])
+
+
 def cancel_kb():
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="❌ Cancel")]],
         resize_keyboard=True,
         one_time_keyboard=True
     )
-
-
-def user_ban_kb(user_id: int):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🚫 Ban User",   callback_data=f"ban:{user_id}"),
-            InlineKeyboardButton(text="✅ Unban User", callback_data=f"unban:{user_id}"),
-        ],
-    ])

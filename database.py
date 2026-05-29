@@ -45,7 +45,8 @@ async def init_db():
                 joined_at    TEXT NOT NULL,
                 total_spent  REAL DEFAULT 0,
                 total_orders INTEGER DEFAULT 0,
-                is_banned    INTEGER DEFAULT 0
+                is_banned    INTEGER DEFAULT 0,
+                ban_reason   TEXT DEFAULT ''
             )
         """)
         await db.execute("""
@@ -59,7 +60,34 @@ async def init_db():
                 created_at   TEXT NOT NULL
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT DEFAULT ''
+            )
+        """)
+        # Default settings
+        await db.execute("INSERT OR IGNORE INTO settings (key,value) VALUES ('maintenance','0')")
+        await db.execute("INSERT OR IGNORE INTO settings (key,value) VALUES ('maintenance_msg','🔧 Bot is under maintenance. Please check back later!')")
         await db.commit()
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+async def get_setting(key: str) -> str:
+    async with aiosqlite.connect(DB) as db:
+        r = await (await db.execute("SELECT value FROM settings WHERE key=?", (key,))).fetchone()
+        return r[0] if r else ""
+
+async def set_setting(key: str, value: str):
+    async with aiosqlite.connect(DB) as db:
+        await db.execute("INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)", (key, value))
+        await db.commit()
+
+async def is_maintenance() -> bool:
+    return (await get_setting("maintenance")) == "1"
+
+async def get_maintenance_msg() -> str:
+    return await get_setting("maintenance_msg")
 
 # ── Accounts ──────────────────────────────────────────────────────────────────
 
@@ -116,7 +144,7 @@ async def delete_account(account_id):
 async def update_account(account_id, **kwargs):
     allowed = ["price","password","twofa","session_str","description","country","country_flag"]
     sets = ", ".join(f"{k}=?" for k in kwargs if k in allowed)
-    vals = [v for k, v in kwargs.items() if k in allowed]
+    vals = [v for k,v in kwargs.items() if k in allowed]
     if not sets:
         return
     async with aiosqlite.connect(DB) as db:
@@ -188,6 +216,13 @@ async def upsert_user(user_id, username, full_name):
             await db.execute("UPDATE users SET username=?,full_name=? WHERE user_id=?", (username, full_name, user_id))
         await db.commit()
 
+async def get_user(user_id):
+    async with aiosqlite.connect(DB) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM users WHERE user_id=?", (user_id,)) as c:
+            r = await c.fetchone()
+            return dict(r) if r else None
+
 async def get_all_users():
     async with aiosqlite.connect(DB) as db:
         db.row_factory = aiosqlite.Row
@@ -199,14 +234,14 @@ async def update_user_stats(user_id, amount):
         await db.execute("UPDATE users SET total_spent=total_spent+?,total_orders=total_orders+1 WHERE user_id=?", (amount, user_id))
         await db.commit()
 
-async def ban_user(user_id):
+async def ban_user(user_id, reason="No reason provided"):
     async with aiosqlite.connect(DB) as db:
-        await db.execute("UPDATE users SET is_banned=1 WHERE user_id=?", (user_id,))
+        await db.execute("UPDATE users SET is_banned=1,ban_reason=? WHERE user_id=?", (reason, user_id))
         await db.commit()
 
 async def unban_user(user_id):
     async with aiosqlite.connect(DB) as db:
-        await db.execute("UPDATE users SET is_banned=0 WHERE user_id=?", (user_id,))
+        await db.execute("UPDATE users SET is_banned=0,ban_reason='' WHERE user_id=?", (user_id,))
         await db.commit()
 
 async def is_banned(user_id):
@@ -220,9 +255,11 @@ async def get_stats():
         av  = (await (await db.execute("SELECT COUNT(*) FROM accounts WHERE status='available'")).fetchone())[0]
         sol = (await (await db.execute("SELECT COUNT(*) FROM accounts WHERE status='sold'")).fetchone())[0]
         tu  = (await (await db.execute("SELECT COUNT(*) FROM users")).fetchone())[0]
+        ban = (await (await db.execute("SELECT COUNT(*) FROM users WHERE is_banned=1")).fetchone())[0]
         rev = (await (await db.execute("SELECT SUM(amount) FROM orders WHERE status='approved'")).fetchone())[0] or 0
         po  = (await (await db.execute("SELECT COUNT(*) FROM orders WHERE status='pending'")).fetchone())[0]
-        return {"total_accounts":ta,"available":av,"sold":sol,"users":tu,"revenue":rev,"pending":po}
+        ao  = (await (await db.execute("SELECT COUNT(*) FROM orders WHERE status='approved'")).fetchone())[0]
+        return {"total_accounts":ta,"available":av,"sold":sol,"users":tu,"banned":ban,"revenue":rev,"pending":po,"approved_orders":ao}
 
 # ── OTP Sessions ──────────────────────────────────────────────────────────────
 
