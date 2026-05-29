@@ -3,8 +3,8 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart
 
 import database as db
-from keyboards import user_main_kb, country_list_kb, account_detail_kb, developer_kb
-from config import LOG_CHANNEL_LINK, SUPPORT_GROUP, ADMIN_USERNAME
+from keyboards import user_main_kb, country_list_kb, account_detail_kb, developer_kb, force_join_kb
+from config import LOG_CHANNEL_LINK, SUPPORT_GROUP, ADMIN_USERNAME, FORCE_JOIN_CHANNELS
 
 router = Router()
 
@@ -15,31 +15,71 @@ _DEV_LINK = "https://t.me/EVILTALKS"
 
 async def banned_check(user_id: int, obj) -> bool:
     if await db.is_banned(user_id):
-        text = "🚫 You are banned.\nContact support if you think this is a mistake."
+        text = "🚫 <b>You are banned!</b>\n\nContact support if this is a mistake."
         if isinstance(obj, Message):
-            await obj.answer(text)
+            await obj.answer(text, parse_mode="HTML")
         else:
-            await obj.answer(text, show_alert=True)
+            await obj.answer("🚫 You are banned!", show_alert=True)
         return True
     return False
+
+
+async def maintenance_check(user_id: int, obj) -> bool:
+    from config import ADMIN_IDS
+    if user_id in ADMIN_IDS:
+        return False  # Admins bypass maintenance
+    if await db.is_maintenance():
+        m_msg = await db.get_maintenance_msg()
+        if isinstance(obj, Message):
+            await obj.answer(m_msg)
+        else:
+            await obj.answer(m_msg, show_alert=True)
+        return True
+    return False
+
+
+async def force_join_check(bot: Bot, user_id: int, obj) -> bool:
+    if not FORCE_JOIN_CHANNELS:
+        return False
+    from utils.force_join import check_joined
+    not_joined = await check_joined(bot, user_id)
+    if not not_joined:
+        return False
+    text = (
+        "🔒 <b>Access Restricted!</b>\n\n"
+        "Join our channel(s) first to use this bot:\n\n"
+        "👇 Join all then tap <b>I've Joined</b>"
+    )
+    kb = force_join_kb(not_joined)
+    if isinstance(obj, Message):
+        await obj.answer(text, parse_mode="HTML", reply_markup=kb)
+    else:
+        await obj.message.answer(text, parse_mode="HTML", reply_markup=kb)
+        await obj.answer()
+    return True
 
 
 # ── /start ─────────────────────────────────────────────────────────────────────
 
 @router.message(CommandStart())
-async def start(msg: Message):
+async def start(msg: Message, bot: Bot):
     await db.upsert_user(msg.from_user.id, msg.from_user.username or "", msg.from_user.full_name)
 
     from config import ADMIN_IDS
     if msg.from_user.id in ADMIN_IDS:
         from keyboards import admin_main_kb
         await msg.answer(
-            f"👑 <b>Welcome back, Admin!</b>\n\n"
-            f"Use the panel below to manage your bot.",
+            "👑 <b>Welcome back, Admin!</b>\n\n"
+            "Use the panel below to manage your bot.",
             parse_mode="HTML",
             reply_markup=admin_main_kb()
         )
         return
+
+    # Checks in order
+    if await maintenance_check(msg.from_user.id, msg): return
+    if await banned_check(msg.from_user.id, msg): return
+    if await force_join_check(bot, msg.from_user.id, msg): return
 
     await msg.answer(
         f"🔥 <b>Welcome to AccountBot!</b>\n\n"
@@ -59,12 +99,45 @@ async def start(msg: Message):
     )
 
 
+# ── Check Joined ───────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data == "check_joined")
+async def check_joined_cb(cq: CallbackQuery, bot: Bot):
+    from utils.force_join import check_joined
+    not_joined = await check_joined(bot, cq.from_user.id)
+    if not_joined:
+        await cq.message.edit_text(
+            "❌ <b>Still not joined all channels!</b>\n\n"
+            "Join all then tap check again 👇",
+            parse_mode="HTML",
+            reply_markup=force_join_kb(not_joined)
+        )
+        await cq.answer("❌ Not joined yet!", show_alert=True)
+    else:
+        try:
+            await cq.message.delete()
+        except Exception:
+            pass
+        await cq.message.answer(
+            f"✅ <b>Access Granted!</b>\n\n"
+            f"📢 {LOG_CHANNEL_LINK}\n"
+            f"💬 {SUPPORT_GROUP}\n\n"
+            f"Tap <b>Browse Accounts</b> to start! 👇",
+            parse_mode="HTML",
+            reply_markup=user_main_kb(),
+            disable_web_page_preview=True
+        )
+        await cq.answer("✅ Welcome!")
+
+
 # ── Browse Accounts ────────────────────────────────────────────────────────────
 
 @router.message(F.text == "🛒 Browse Accounts")
-async def browse(msg: Message):
-    if await banned_check(msg.from_user.id, msg):
-        return
+async def browse(msg: Message, bot: Bot):
+    if await maintenance_check(msg.from_user.id, msg): return
+    if await banned_check(msg.from_user.id, msg): return
+    if await force_join_check(bot, msg.from_user.id, msg): return
+
     stock = await db.get_country_stock()
     if not stock:
         await msg.answer(
@@ -73,8 +146,7 @@ async def browse(msg: Message):
         )
         return
     await msg.answer(
-        f"🌍 <b>Select Country</b>\n\n"
-        f"Choose a country to see available accounts:",
+        "🌍 <b>Select Country</b>\n\nChoose a country to see available accounts:",
         parse_mode="HTML",
         reply_markup=country_list_kb(stock)
     )
@@ -87,16 +159,18 @@ async def back_countries(cq: CallbackQuery):
         await cq.message.edit_text("😔 No accounts available right now.")
         return
     await cq.message.edit_text(
-        f"🌍 <b>Select Country</b>\n\nChoose a country:",
+        "🌍 <b>Select Country</b>\n\nChoose a country:",
         parse_mode="HTML",
         reply_markup=country_list_kb(stock)
     )
 
 
 @router.callback_query(F.data.startswith("country:"))
-async def country_accounts(cq: CallbackQuery):
-    if await banned_check(cq.from_user.id, cq):
-        return
+async def country_accounts(cq: CallbackQuery, bot: Bot):
+    if await maintenance_check(cq.from_user.id, cq): return
+    if await banned_check(cq.from_user.id, cq): return
+    if await force_join_check(bot, cq.from_user.id, cq): return
+
     country = cq.data.split(":", 1)[1]
     accounts = await db.get_available_by_country(country)
     if not accounts:
@@ -105,7 +179,7 @@ async def country_accounts(cq: CallbackQuery):
 
     acc = accounts[0]
     masked = f"{acc['number'][:4]}****{acc['number'][-3:]}"
-    text = (
+    await cq.message.edit_text(
         f"{acc['country_flag']} <b>{acc['country']} Account</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"📱 <b>Number:</b> <code>{masked}</code>\n"
@@ -113,10 +187,7 @@ async def country_accounts(cq: CallbackQuery):
         f"📝 <b>Info:</b> {acc['description'] or 'Fresh account, ready to use'}\n"
         f"📦 <b>Stock:</b> {len(accounts)} available\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"⚡ UPI Payment · Auto OTP · Instant Delivery"
-    )
-    await cq.message.edit_text(
-        text,
+        f"⚡ UPI Payment · Auto OTP · Instant Delivery",
         parse_mode="HTML",
         reply_markup=account_detail_kb(acc["id"])
     )
@@ -124,15 +195,19 @@ async def country_accounts(cq: CallbackQuery):
 
 @router.callback_query(F.data == "back_main")
 async def back_main(cq: CallbackQuery):
-    await cq.message.delete()
+    try:
+        await cq.message.delete()
+    except Exception:
+        pass
 
 
 # ── My Orders ──────────────────────────────────────────────────────────────────
 
 @router.message(F.text == "📦 My Orders")
-async def my_orders(msg: Message):
-    if await banned_check(msg.from_user.id, msg):
-        return
+async def my_orders(msg: Message, bot: Bot):
+    if await maintenance_check(msg.from_user.id, msg): return
+    if await banned_check(msg.from_user.id, msg): return
+
     orders = await db.get_user_orders(msg.from_user.id)
     if not orders:
         await msg.answer(
@@ -199,7 +274,7 @@ async def how_it_works(msg: Message):
     )
 
 
-# ── Developer (Hardcoded — cannot be changed by buyer) ─────────────────────────
+# ── Developer ──────────────────────────────────────────────────────────────────
 
 @router.message(F.text == "👨‍💻 Developer")
 async def developer(msg: Message):
