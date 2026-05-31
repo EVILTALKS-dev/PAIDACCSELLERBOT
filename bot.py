@@ -6,6 +6,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN
 from database import init_db
 from handlers import user, admin, payment, otp
+from handlers import deposit
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,10 +20,10 @@ async def main():
     bot = Bot(token=BOT_TOKEN)
     dp  = Dispatcher(storage=MemoryStorage())
 
-    # Router order matters — admin first
     dp.include_router(admin.router)
     dp.include_router(payment.router)
     dp.include_router(otp.router)
+    dp.include_router(deposit.router)
     dp.include_router(user.router)
 
     logger.info("🤖 EVILTALKS AccountBot starting...")
