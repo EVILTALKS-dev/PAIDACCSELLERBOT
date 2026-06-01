@@ -13,10 +13,8 @@ UPI_ID           = os.getenv("UPI_ID", "das20@fam")
 UPI_NAME         = os.getenv("UPI_NAME", "EVILTALKS Store")
 API_ID           = int(os.getenv("API_ID", "0"))
 API_HASH         = os.getenv("API_HASH", "")
+DATABASE_URL     = os.getenv("DATABASE_URL", "/app/data/bot.db")
 BOT_NAME         = "EVILTALKS AccountBot"
-
-# ── MongoDB (Required now) ─────────────────────────────────────────────────────
-MONGO_URI = os.getenv("MONGO_URI", "")
 
 # ── Force Join ─────────────────────────────────────────────────────────────────
 FORCE_JOIN_RAW = os.getenv("FORCE_JOIN_CHANNELS", "")
@@ -29,8 +27,8 @@ def get_force_join_channels():
         entry = entry.strip()
         if ":" not in entry:
             continue
-        idx    = entry.index(":")
-        ch_id  = entry[:idx].strip()
+        idx     = entry.index(":")
+        ch_id   = entry[:idx].strip()
         ch_link = entry[idx+1:].strip()
         try:
             channels.append({"id": int(ch_id), "link": ch_link})
