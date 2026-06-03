@@ -3,17 +3,19 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart
 
 import database as db
-from keyboards import user_main_kb, country_list_kb, account_detail_kb, developer_kb, force_join_kb
+from keyboards import (
+    user_main_kb, country_list_kb,
+    account_detail_kb, developer_kb, force_join_kb
+)
 from config import LOG_CHANNEL_LINK, SUPPORT_GROUP, ADMIN_USERNAME, FORCE_JOIN_CHANNELS
 
 router = Router()
 
-# ── Hardcoded Developer Info (DO NOT REMOVE) ───────────────────────────────────
 _DEV      = "@EVILTALKS"
 _DEV_LINK = "https://t.me/EVILTALKS"
 
 
-async def banned_check(user_id: int, obj) -> bool:
+async def banned_check(user_id, obj) -> bool:
     if await db.is_banned(user_id):
         text = "🚫 <b>You are banned!</b>\n\nContact support if this is a mistake."
         if isinstance(obj, Message):
@@ -24,21 +26,21 @@ async def banned_check(user_id: int, obj) -> bool:
     return False
 
 
-async def maintenance_check(user_id: int, obj) -> bool:
+async def maintenance_check(user_id, obj) -> bool:
     from config import ADMIN_IDS
     if user_id in ADMIN_IDS:
-        return False  # Admins bypass maintenance
+        return False
     if await db.is_maintenance():
-        m_msg = await db.get_maintenance_msg()
+        m = await db.get_maintenance_msg()
         if isinstance(obj, Message):
-            await obj.answer(m_msg)
+            await obj.answer(m)
         else:
-            await obj.answer(m_msg, show_alert=True)
+            await obj.answer(m, show_alert=True)
         return True
     return False
 
 
-async def force_join_check(bot: Bot, user_id: int, obj) -> bool:
+async def force_join_check(bot, user_id, obj) -> bool:
     if not FORCE_JOIN_CHANNELS:
         return False
     from utils.force_join import check_joined
@@ -47,8 +49,8 @@ async def force_join_check(bot: Bot, user_id: int, obj) -> bool:
         return False
     text = (
         "🔒 <b>Access Restricted!</b>\n\n"
-        "Join our channel(s) first to use this bot:\n\n"
-        "👇 Join all then tap <b>I've Joined</b>"
+        "Join our channel(s) first:\n\n"
+        "👇 Join then tap <b>I've Joined</b>"
     )
     kb = force_join_kb(not_joined)
     if isinstance(obj, Message):
@@ -68,15 +70,12 @@ async def start(msg: Message, bot: Bot):
     from config import ADMIN_IDS
     if msg.from_user.id in ADMIN_IDS:
         from keyboards import admin_main_kb
-        await msg.answer(
-            "👑 <b>Welcome back, Admin!</b>\n\n"
-            "Use the panel below to manage your bot.",
+        return await msg.answer(
+            "👑 <b>Welcome back, Admin!</b>",
             parse_mode="HTML",
             reply_markup=admin_main_kb()
         )
-        return
 
-    # Checks in order
     if await maintenance_check(msg.from_user.id, msg): return
     if await banned_check(msg.from_user.id, msg): return
     if await force_join_check(bot, msg.from_user.id, msg): return
@@ -84,14 +83,13 @@ async def start(msg: Message, bot: Bot):
     await msg.answer(
         f"🔥 <b>Welcome to AccountBot!</b>\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🛒 Buy verified Telegram accounts\n"
-        f"🌍 Multiple countries available\n"
-        f"💳 Pay via UPI — instant QR\n"
-        f"🔐 Auto OTP delivery\n"
-        f"✅ Admin verified & safe\n"
+        f"🛒 Verified Telegram accounts\n"
+        f"🌍 Multiple countries\n"
+        f"💳 UPI Payment · Auto OTP\n"
+        f"💰 Wallet system available\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📢 Channel: {LOG_CHANNEL_LINK}\n"
-        f"💬 Support: {SUPPORT_GROUP}\n\n"
+        f"📢 {LOG_CHANNEL_LINK}\n"
+        f"💬 {SUPPORT_GROUP}\n\n"
         f"Tap <b>Browse Accounts</b> to start! 👇",
         parse_mode="HTML",
         reply_markup=user_main_kb(),
@@ -99,7 +97,7 @@ async def start(msg: Message, bot: Bot):
     )
 
 
-# ── Check Joined ───────────────────────────────────────────────────────────────
+# ── Force Join Check ───────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "check_joined")
 async def check_joined_cb(cq: CallbackQuery, bot: Bot):
@@ -107,8 +105,7 @@ async def check_joined_cb(cq: CallbackQuery, bot: Bot):
     not_joined = await check_joined(bot, cq.from_user.id)
     if not_joined:
         await cq.message.edit_text(
-            "❌ <b>Still not joined all channels!</b>\n\n"
-            "Join all then tap check again 👇",
+            "❌ <b>Still not joined!</b>\n\nJoin all channels then check again 👇",
             parse_mode="HTML",
             reply_markup=force_join_kb(not_joined)
         )
@@ -119,13 +116,9 @@ async def check_joined_cb(cq: CallbackQuery, bot: Bot):
         except Exception:
             pass
         await cq.message.answer(
-            f"✅ <b>Access Granted!</b>\n\n"
-            f"📢 {LOG_CHANNEL_LINK}\n"
-            f"💬 {SUPPORT_GROUP}\n\n"
-            f"Tap <b>Browse Accounts</b> to start! 👇",
+            "✅ <b>Access Granted!</b>\n\nTap Browse Accounts to start! 👇",
             parse_mode="HTML",
-            reply_markup=user_main_kb(),
-            disable_web_page_preview=True
+            reply_markup=user_main_kb()
         )
         await cq.answer("✅ Welcome!")
 
@@ -140,13 +133,12 @@ async def browse(msg: Message, bot: Bot):
 
     stock = await db.get_country_stock()
     if not stock:
-        await msg.answer(
+        return await msg.answer(
             "😔 <b>No accounts available right now.</b>\n\nCheck back soon!",
             parse_mode="HTML"
         )
-        return
     await msg.answer(
-        "🌍 <b>Select Country</b>\n\nChoose a country to see available accounts:",
+        "🌍 <b>Select Country</b>\n\nChoose a country:",
         parse_mode="HTML",
         reply_markup=country_list_kb(stock)
     )
@@ -156,8 +148,7 @@ async def browse(msg: Message, bot: Bot):
 async def back_countries(cq: CallbackQuery):
     stock = await db.get_country_stock()
     if not stock:
-        await cq.message.edit_text("😔 No accounts available right now.")
-        return
+        return await cq.message.edit_text("😔 No accounts available right now.")
     await cq.message.edit_text(
         "🌍 <b>Select Country</b>\n\nChoose a country:",
         parse_mode="HTML",
@@ -166,30 +157,38 @@ async def back_countries(cq: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("country:"))
-async def country_accounts(cq: CallbackQuery, bot: Bot):
+async def show_country(cq: CallbackQuery, bot: Bot):
     if await maintenance_check(cq.from_user.id, cq): return
     if await banned_check(cq.from_user.id, cq): return
-    if await force_join_check(bot, cq.from_user.id, cq): return
 
-    country = cq.data.split(":", 1)[1]
+    country  = cq.data.split(":", 1)[1]
     accounts = await db.get_available_by_country(country)
     if not accounts:
-        await cq.answer("😔 No accounts left in this country!", show_alert=True)
-        return
+        return await cq.answer("😔 No accounts left!", show_alert=True)
 
     acc = accounts[0]
     masked = f"{acc['number'][:4]}****{acc['number'][-3:]}"
-    await cq.message.edit_text(
+
+    # Check user wallet balance
+    bal          = await db.get_balance(cq.from_user.id)
+    can_wallet   = bal >= acc["price"]
+
+    text = (
         f"{acc['country_flag']} <b>{acc['country']} Account</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"📱 <b>Number:</b> <code>{masked}</code>\n"
         f"💰 <b>Price:</b> ₹{acc['price']:.2f}\n"
         f"📝 <b>Info:</b> {acc['description'] or 'Fresh account, ready to use'}\n"
         f"📦 <b>Stock:</b> {len(accounts)} available\n"
+        f"💼 <b>Your Balance:</b> ₹{bal:.2f}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"⚡ UPI Payment · Auto OTP · Instant Delivery",
+        f"⚡ UPI Payment · Auto OTP · Instant Delivery"
+    )
+
+    await cq.message.edit_text(
+        text,
         parse_mode="HTML",
-        reply_markup=account_detail_kb(acc["id"])
+        reply_markup=account_detail_kb(acc["id"], can_use_wallet=can_wallet)
     )
 
 
@@ -210,17 +209,16 @@ async def my_orders(msg: Message, bot: Bot):
 
     orders = await db.get_user_orders(msg.from_user.id)
     if not orders:
-        await msg.answer(
+        return await msg.answer(
             "📦 <b>No orders yet!</b>\n\nTap <b>Browse Accounts</b> to get started.",
             parse_mode="HTML"
         )
-        return
 
     text = "📦 <b>Your Orders</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
     for o in orders[:10]:
         emoji = {"pending": "⏳", "approved": "✅", "rejected": "❌"}.get(o["status"], "❔")
         text += (
-            f"{emoji} <b>Order #{o['id']}</b>\n"
+            f"{emoji} <b>Order</b>\n"
             f"   💸 ₹{o['amount']:.2f} · {o['status'].upper()}\n"
             f"   🗓 {o['created_at'][:10]}\n\n"
         )
@@ -230,13 +228,10 @@ async def my_orders(msg: Message, bot: Bot):
 # ── Channel ────────────────────────────────────────────────────────────────────
 
 @router.message(F.text == "📢 Channel")
-async def channel_link(msg: Message):
+async def channel(msg: Message):
     await msg.answer(
-        f"📢 <b>Join our official channel!</b>\n\n"
-        f"👉 {LOG_CHANNEL_LINK}\n\n"
-        f"Get updates on new accounts & offers.",
-        parse_mode="HTML",
-        disable_web_page_preview=False
+        f"📢 <b>Our Channel</b>\n\n{LOG_CHANNEL_LINK}",
+        parse_mode="HTML", disable_web_page_preview=False
     )
 
 
@@ -245,10 +240,9 @@ async def channel_link(msg: Message):
 @router.message(F.text == "💬 Support")
 async def support(msg: Message):
     await msg.answer(
-        f"💬 <b>Need Help?</b>\n\n"
-        f"📩 Support: {SUPPORT_GROUP}\n"
-        f"👤 Admin: {ADMIN_USERNAME}\n\n"
-        f"We respond within 1-2 hours.",
+        f"💬 <b>Support</b>\n\n"
+        f"📩 {SUPPORT_GROUP}\n"
+        f"👤 {ADMIN_USERNAME}",
         parse_mode="HTML"
     )
 
@@ -261,15 +255,12 @@ async def how_it_works(msg: Message):
         "ℹ️ <b>How It Works</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         "1️⃣ Browse accounts by country\n"
-        "2️⃣ Choose & confirm purchase\n"
-        "3️⃣ Scan UPI QR & pay exact amount\n"
-        "4️⃣ Upload payment screenshot\n"
-        "5️⃣ Tap 'Notify Admin'\n"
-        "6️⃣ Admin verifies & approves\n"
-        "7️⃣ Tap <b>Reveal Account Details</b>\n"
-        "8️⃣ Login with the account\n"
-        "9️⃣ Tap <b>Get Latest OTP</b> — instant! ⚡\n\n"
-        "✅ <b>Safe · Fast · Auto OTP</b>",
+        "2️⃣ Buy via UPI QR <b>or</b> Wallet balance\n"
+        "3️⃣ Upload payment screenshot\n"
+        "4️⃣ Admin approves → Account delivered\n"
+        "5️⃣ Tap <b>Get Latest OTP</b> — instant! ⚡\n\n"
+        "💰 <b>Wallet:</b> Deposit money → Buy instantly!\n\n"
+        "✅ Safe · Fast · Auto OTP",
         parse_mode="HTML"
     )
 
@@ -279,11 +270,9 @@ async def how_it_works(msg: Message):
 @router.message(F.text == "👨‍💻 Developer")
 async def developer(msg: Message):
     await msg.answer(
-        f"👨‍💻 <b>Bot Developer</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"This bot was built by <b>{_DEV}</b>\n\n"
-        f"Want a custom bot like this?\n"
-        f"Contact the developer! 👇",
+        f"👨‍💻 <b>Bot Developer</b>\n\n"
+        f"Built by <b>{_DEV}</b>\n\n"
+        f"Want a custom bot? Contact! 👇",
         parse_mode="HTML",
         reply_markup=developer_kb()
     )
