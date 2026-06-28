@@ -2,10 +2,6 @@ from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
     ReplyKeyboardMarkup, KeyboardButton
 )
-
-_DEV      = "@BOTMAKERGARVIT"
-_DEV_LINK = "https://t.me/BOTMAKERGARVIT"
-
 # ── User Keyboards ─────────────────────────────────────────────────────────────
 
 def user_main_kb():
@@ -15,12 +11,6 @@ def user_main_kb():
         [KeyboardButton(text="📢 Channel"),         KeyboardButton(text="💬 Support")],
         [KeyboardButton(text="ℹ️ How It Works"),    KeyboardButton(text="👨‍💻 Developer")],
     ], resize_keyboard=True)
-
-
-def developer_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"👨‍💻 Contact — {_DEV}", url=_DEV_LINK)],
-    ])
 
 
 def country_list_kb(stock: list):
